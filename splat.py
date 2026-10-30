@@ -72,19 +72,25 @@ def main():
         require("ffmpeg"); require("ffprobe")
         duration=duration_of(video)
         if not a.dry_run and list(images.glob("frame_*.jpg")):
-            p.error(f"{images} already contains extracted frames; use --skip-extract or a new --output")
+            print(f"Reusing existing extracted frames in {images}")
+            a.skip_extract=True
         fps=a.frames/duration
         vf=f"fps={fps:.10f},scale={a.resolution}:{a.resolution}:force_original_aspect_ratio=decrease:force_divisible_by=2"
-        run(["ffmpeg","-hide_banner","-loglevel","error","-i",video,"-vf",vf,"-frames:v",a.frames,"-q:v","2",images/"frame_%05d.jpg"],a.dry_run)
+        if not a.skip_extract: run(["ffmpeg","-hide_banner","-loglevel","error","-i",video,"-vf",vf,"-frames:v",a.frames,"-q:v","2",images/"frame_%05d.jpg"],a.dry_run)
     elif not a.dry_run and not any(images.glob("*.jpg")):
         p.error(f"No JPEG frames in {images}")
     if not a.skip_colmap:
         require("colmap")
         if database.exists() and not a.dry_run:
-            p.error(f"{database} already exists; use --skip-colmap or a new --output")
-        run(["colmap","feature_extractor","--database_path",database,"--image_path",images,"--ImageReader.single_camera","1","--ImageReader.camera_model",a.camera_model,"--FeatureExtraction.use_gpu","0"],a.dry_run)
-        run(["colmap",f"{a.matcher}_matcher","--database_path",database,"--FeatureMatching.use_gpu","0"],a.dry_run)
-        run(["colmap","mapper","--database_path",database,"--image_path",images,"--output_path",sparse],a.dry_run)
+            if model.is_dir():
+                print(f"Reusing existing COLMAP reconstruction at {model}")
+                a.skip_colmap=True
+            else:
+                print(f"Removing incomplete COLMAP database {database} to restart feature extraction")
+                database.unlink()
+        if not a.skip_colmap: run(["colmap","feature_extractor","--database_path",database,"--image_path",images,"--ImageReader.single_camera","1","--ImageReader.camera_model",a.camera_model,"--SiftExtraction.use_gpu","0"],a.dry_run)
+        if not a.skip_colmap: run(["colmap",f"{a.matcher}_matcher","--database_path",database,"--SiftMatching.use_gpu","0"],a.dry_run)
+        if not a.skip_colmap: run(["colmap","mapper","--database_path",database,"--image_path",images,"--output_path",sparse],a.dry_run)
     if not a.dry_run:
         if not model.is_dir():
             raise RuntimeError(f"No COLMAP model at {model}; inspect mapper logs")
